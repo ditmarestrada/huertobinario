@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Dónde vive cada parte de un programa Java dentro del ordenador (heap, pilas, JIT, GC) y por dónde pasa hasta la CPU.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Java en la placa">
+<meta property="og:site_name" content="HuertoBinario">
+<meta property="og:description" content="Dónde vive cada parte de un programa Java dentro del ordenador (heap, pilas, JIT, GC) y por dónde pasa hasta la CPU.">
+<!-- Cuando sepas la URL final, añade aquí og:url y og:image (URL completa) para la vista previa en Facebook -->
+<title>Java en la placa · HuertoBinario</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: placa base a la izquierda (se desliza en el móvil), panel de detalle a la derecha (arriba en el móvil).
+   Cobre = datos en movimiento y lo que Java usa; el resto de la placa se queda en gris verdoso. */
+:root {
+  --bg: #edf0f2;
+  --surface: #f8f9fa;
+  --fg: #18222b;
+  --muted: #566471;
+  --line: #aab5be;
+  --board: #d8e2dd;
+  --chip: #f3f6f6;
+  --chip2: #e4ebea;
+  --chip-line: #74838d;
+  --trace: #b79b7a;
+  --java: #c8501a;
+  --java-soft: #f7d9c8;
+  --java-ink: #9a3b0e;
+  --seg-heap: #cde0ee;
+  --seg-stack: #e6dfc9;
+  --seg-meta: #dcd6ea;
+  --seg-cc: #f3d8c7;
+  --font-display: 'IBM Plex Sans Condensed', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1415;
+    --surface: #121c1d;
+    --fg: #e3ebe8;
+    --muted: #92a39e;
+    --line: #34443f;
+    --board: #10201c;
+    --chip: #192b27;
+    --chip2: #223630;
+    --chip-line: #5d766e;
+    --trace: #7a6248;
+    --java: #f08c40;
+    --java-soft: #3b2a1c;
+    --java-ink: #f3a266;
+    --seg-heap: #1d3342;
+    --seg-stack: #342f22;
+    --seg-meta: #2c2842;
+    --seg-cc: #3d2b20;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1415;
+  --surface: #121c1d;
+  --fg: #e3ebe8;
+  --muted: #92a39e;
+  --line: #34443f;
+  --board: #10201c;
+  --chip: #192b27;
+  --chip2: #223630;
+  --chip-line: #5d766e;
+  --trace: #7a6248;
+  --java: #f08c40;
+  --java-soft: #3b2a1c;
+  --java-ink: #f3a266;
+  --seg-heap: #1d3342;
+  --seg-stack: #342f22;
+  --seg-meta: #2c2842;
+  --seg-cc: #3d2b20;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 15px/1.55 var(--font-body);
+  padding-block: 22px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1240px; margin: 0 auto; }
+h1 { font: 700 30px/1.1 var(--font-display); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+header p { margin: 8px 0 0; color: var(--muted); max-width: 62ch; }
+
+.bar { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-start; margin: 18px 0 14px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex: none; }
+.seg button { font: 500 13px var(--font-mono); padding: 8px 15px; border: 0; background: var(--surface); color: var(--fg); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 340px; min-width: 0; }
+.chip { font: 500 12px var(--font-mono); padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); cursor: pointer; }
+.chip[aria-pressed="true"] { border-color: var(--java); background: var(--java-soft); }
+button:focus-visible { outline: 2px solid var(--java); outline-offset: 2px; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 20px; align-items: start; }
+.fig { margin: 0; min-width: 0; }
+.board-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--board); }
+.board { display: block; width: 100%; min-width: 640px; height: auto; }
+figcaption { color: var(--muted); font-size: 13px; margin-top: 8px; max-width: 80ch; }
+.hint { display: none; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 20px; min-height: 420px; position: sticky; top: 16px; min-width: 0; }
+.kicker { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.panel h2 { font: 700 25px/1.15 var(--font-display); margin: 9px 0 6px; text-wrap: balance; }
+.lab { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--java-ink); margin: 16px 0 6px; }
+.panel p { margin: 0; max-width: 60ch; }
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+.m { border-top: 1px solid var(--line); padding-top: 8px; min-width: 0; }
+.m b { display: block; font: 600 16px/1.25 var(--font-display); }
+.m span { font: 400 12px var(--font-mono); color: var(--muted); }
+.cmd { margin: 16px 0 0; font: 400 12.5px/1.4 var(--font-mono); background: var(--chip2); border-radius: 6px; padding: 9px 11px; overflow-x: auto; }
+.nav { display: flex; align-items: center; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
+.btn { font: 500 13px var(--font-mono); padding: 8px 13px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 6px; cursor: pointer; }
+.btn.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.dots { display: flex; gap: 2px; margin-left: auto; }
+.dot { width: 16px; height: 22px; padding: 0; border: 0; background: transparent; cursor: pointer; position: relative; }
+.dot::after { content: ""; position: absolute; inset: 6px 3px; border-radius: 50%; border: 1.5px solid var(--chip-line); }
+.dot[aria-current="step"]::after { background: var(--java); border-color: var(--java); }
+
+/* Placa */
+.board text { font-family: var(--font-body); }
+.t-name { font: 600 16px var(--font-display); fill: var(--fg); }
+.t-sub { font: 400 12px var(--font-mono); fill: var(--fg); opacity: 0.76; }
+.c { text-anchor: middle; }
+.silk { font: 500 12px var(--font-mono); letter-spacing: 0.12em; fill: var(--muted); }
+.shape { fill: var(--chip); stroke: var(--chip-line); stroke-width: 1.5; }
+.shape.sm { fill: var(--chip2); stroke-width: 1; }
+.shape.soft { fill: transparent; stroke-dasharray: 6 4; }
+.shape.s-heap { fill: var(--seg-heap); }
+.shape.s-stack { fill: var(--seg-stack); }
+.shape.s-meta { fill: var(--seg-meta); }
+.shape.s-cc { fill: var(--seg-cc); }
+.file { fill: var(--chip2); stroke: var(--chip-line); stroke-width: 1; }
+.deco { fill: none; stroke: var(--chip-line); stroke-width: 1.3; }
+.obj { fill: var(--chip); stroke: var(--chip-line); stroke-width: 1.2; transition: opacity 0.9s; }
+.obj.dead { fill: none; stroke-dasharray: 3 2; }
+.board.gc .obj.dead { opacity: 0; }
+.frame { fill: var(--chip); stroke: var(--chip-line); stroke-width: 1; }
+.hole { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; }
+.lg-hl { fill: var(--java-soft); stroke: var(--java); stroke-width: 2; }
+
+.part { cursor: pointer; }
+.part:hover:not(:has(.part:hover)) > .shape { stroke: var(--java); }
+.part.sel > .shape:not(.seg), .part.hl > .shape:not(.seg) { fill: var(--java-soft); stroke: var(--java); stroke-width: 2.5; }
+.part.sel > .shape.seg, .part.hl > .shape.seg { stroke: var(--java); stroke-width: 2.5; }
+.board.tour .part:not(.hl) > :not(.part) { opacity: 0.38; }
+
+.trace path { fill: none; stroke: var(--trace); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.trace.hl path { stroke: var(--java); stroke-dasharray: 7 7; animation: flow 0.9s linear infinite; }
+.trace.hl.rev path { animation-direction: reverse; }
+@keyframes flow { to { stroke-dashoffset: -14; } }
+@media (prefers-reduced-motion: reduce) {
+  .trace.hl path { animation: none; stroke-dasharray: none; }
+  .obj { transition: none; }
+}
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .panel { order: -1; position: static; min-height: 0; }
+  .hint { display: block; }
+}
+
+/* Ajustes para funcionar como página propia */
+[hidden] { display: none !important; }
+body { margin: 0; }
+.back { display: inline-block; margin-bottom: 14px; font: 500 13px var(--font-mono); color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--java-ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../">← HuertoBinario</a>
+  <header>
+    <h1>Java en la placa</h1>
+    <p>Dónde vive cada parte de un programa Java dentro de un ordenador y por dónde pasa cuando se ejecuta. Pulsa una pieza o sigue el recorrido.</p>
+  </header>
+
+  <div class="bar">
+    <div class="seg" role="group" aria-label="Modo">
+      <button id="m-explore" aria-pressed="true">Explorar</button>
+      <button id="m-tour" aria-pressed="false">Recorrido</button>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="Piezas de la placa"></div>
+  </div>
+
+  <div class="grid">
+    <figure class="fig">
+      <div class="board-wrap" id="wrap">
+        <svg class="board" id="board" viewBox="0 0 960 600" role="img" aria-label="Placa base simplificada con CPU, cachés, RAM dividida en heap, pilas, metaspace y code cache, SSD, GPU, tarjeta de red y sistema operativo"></svg>
+      </div>
+      <figcaption>Placa base simplificada de un PC x86-64. Las latencias son órdenes de magnitud típicos, no medidas de un equipo concreto.<span class="hint"> Desliza la placa para verla entera.</span></figcaption>
+    </figure>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+</div>
+
+<script>
+(function () {
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- Datos ---------- */
+  var PARTS = {
+    cores: { short: 'Núcleos', kind: 'Hardware · CPU', title: 'Núcleos de la CPU', hwl: 'En la placa',
+      hw: 'Cada núcleo lee instrucciones de código máquina y las ejecuta una tras otra, a miles de millones por segundo.',
+      java: 'Cada Thread de Java es un hilo del sistema operativo, y el sistema los reparte entre los núcleos. El intérprete, el JIT y el GC de la JVM también son hilos que corren aquí.',
+      lat: '~0,3 ns por ciclo', human: '0,3 s' },
+    regs: { short: 'Registros', kind: 'Hardware · dentro del núcleo', title: 'Registros', hwl: 'En la placa',
+      hw: 'Las posiciones de memoria más rápidas: unas pocas decenas de valores de 64 bits dentro del propio núcleo.',
+      java: 'El código que genera el JIT guarda variables como total e i en registros, y por eso sumar es una sola instrucción. El intérprete, en cambio, mueve todo por la pila, que está en memoria.',
+      lat: 'menos de 1 ciclo', human: '< 0,3 s' },
+    l1: { short: 'L1', kind: 'Hardware · caché', title: 'Caché L1', hwl: 'En la placa',
+      hw: 'Memoria pequeña y muy rápida dentro de cada núcleo (32 a 64 KB), separada para instrucciones y datos.',
+      java: 'Guarda lo que acabas de tocar y el código compilado de un bucle que se repite. Recorrer un array es rápido porque cada acceso trae 64 bytes seguidos a la caché.',
+      lat: '~1 ns', human: '1 s' },
+    l2: { short: 'L2', kind: 'Hardware · caché', title: 'Caché L2', hwl: 'En la placa',
+      hw: 'Un nivel más grande y algo más lento, también por núcleo (256 KB a 2 MB).',
+      java: 'Recoge lo que se desborda de L1: objetos y código usados hace poco. Una lista enlazada, con objetos dispersos por el heap, falla aquí mucho más que un array.',
+      lat: '~4 ns', human: '4 s' },
+    l3: { short: 'L3', kind: 'Hardware · caché', title: 'Caché L3', hwl: 'En la placa',
+      hw: 'Compartida por todos los núcleos, de varios MB a decenas de MB.',
+      java: 'Es donde se encuentran los hilos: lo que un hilo escribe en el heap y otro lee pasa por aquí. volatile y el modelo de memoria de Java existen para que ese intercambio sea predecible.',
+      lat: '~15 ns', human: '15 s' },
+    ram: { short: 'RAM', kind: 'Hardware · memoria', title: 'RAM (proceso de la JVM)', hwl: 'En la placa',
+      hw: 'Memoria principal: gigabytes, unas 100 veces más lenta que L1. Es temporal y se pierde al apagar.',
+      java: 'La JVM es un proceso del sistema operativo y todo lo suyo vive en su trozo de RAM, repartido en cuatro zonas: heap, pilas, metaspace y code cache. Pulsa cada una.',
+      lat: '~90 ns', human: '1,5 min' },
+    heap: { short: 'Heap', kind: 'Java · en RAM', title: 'Heap', hwl: 'Para el hardware',
+      hw: 'Es solo un rango grande de direcciones de RAM.',
+      java: 'Aquí van todos los objetos y arrays creados con new, compartidos por todos los hilos. Cuando ninguna variable puede alcanzar un objeto (los cuadros punteados), el GC libera su espacio. Si se llena: OutOfMemoryError.',
+      lat: '~90 ns si no está en caché', human: '1,5 min', cmd: 'java -Xmx512m -Xlog:gc Main' },
+    stack: { short: 'Pilas', kind: 'Java · en RAM', title: 'Pila de cada hilo', hwl: 'Para el hardware',
+      hw: 'Un trozo de RAM por hilo que crece y se encoge con cada llamada a un método.',
+      java: 'Guarda las variables locales y las referencias a objetos, que son la flecha hacia el heap. Cada llamada añade un marco y al volver se descarta solo, sin GC. Suele medir ~1 MB por hilo.',
+      lat: 'casi siempre en L1: ~1 ns', human: '1 s', cmd: 'java -Xss512k Main' },
+    meta: { short: 'Metaspace', kind: 'Java · en RAM', title: 'Metaspace', hwl: 'Para el hardware',
+      hw: 'RAM nativa, fuera del heap.',
+      java: 'Datos de las clases cargadas: sus métodos, su bytecode y sus constantes. Se llena al cargar cada .class, y por eso una app grande como Spring Boot tarda en arrancar.',
+      lat: '~90 ns', human: '1,5 min', cmd: 'java -verbose:class Main' },
+    cc: { short: 'Code cache', kind: 'Java · en RAM', title: 'Code cache', hwl: 'Para el hardware',
+      hw: 'RAM marcada como ejecutable: la CPU puede saltar a ella y ejecutar lo que contenga.',
+      java: 'Aquí guarda el JIT el código máquina que genera, lo que vimos con PrintCompilation. Cabe hasta unos 240 MB por defecto y desaparece al cerrar el programa.',
+      lat: '~90 ns la primera vez, luego en caché', human: '1,5 min', cmd: 'java -XX:+PrintCompilation Main' },
+    ssd: { short: 'SSD', kind: 'Hardware · almacenamiento', title: 'SSD', hwl: 'En la placa',
+      hw: 'Memoria flash persistente. Conserva los datos sin energía, pero es miles de veces más lenta que la RAM.',
+      java: 'Aquí viven tus .class, los .jar y la librería estándar de la JDK (en esta máquina, un archivo de 140 MB). El cargador de clases lee cada clase una vez y la deja en RAM.',
+      lat: '~80 µs', human: '22 horas' },
+    gpu: { short: 'GPU', kind: 'Hardware · tarjeta gráfica', title: 'GPU', hwl: 'En la placa',
+      hw: 'Miles de núcleos simples que hacen la misma operación sobre muchos datos a la vez: gráficos e inteligencia artificial.',
+      java: 'La JVM no ejecuta tu código en la GPU. Solo entra si dibujas interfaces con aceleración, como en JavaFX, o usas librerías como TornadoVM o JCuda. Un backend con Spring Boot normalmente no la toca.',
+      lat: 'copiar datos a ella: ~20 µs o más', human: '5 horas o más' },
+    nic: { short: 'Red', kind: 'Hardware · red', title: 'Tarjeta de red', hwl: 'En la placa',
+      hw: 'Envía y recibe paquetes por cable o wifi y los deja en un buffer de RAM sin ocupar a la CPU.',
+      java: 'En un backend es la puerta de entrada: la petición llega aquí, el sistema operativo la copia a RAM y un hilo de Tomcat o Netty la lee desde un socket.',
+      lat: 'red local ~0,5 ms · internet ~30 ms', human: '6 días · casi 1 año' },
+    os: { short: 'Sistema operativo', kind: 'Software · no es hardware', title: 'Sistema operativo', hwl: 'Qué hace',
+      hw: 'Reparte la CPU y la RAM entre los programas y es el único que habla directamente con el disco y la red.',
+      java: 'La JVM le pide el heap (memoria virtual), le pide hilos y le pide leer el .class, todo mediante llamadas al sistema. Cada Thread de Java es un hilo del sistema operativo.' }
+  };
+  var ORDER = ['cores', 'regs', 'l1', 'l2', 'l3', 'ram', 'heap', 'stack', 'meta', 'cc', 'ssd', 'gpu', 'nic', 'os'];
+
+  var STEPS = [
+    { t: 'El .class espera en el SSD',
+      d: 'javac ya hizo su trabajo: Main.class es un archivo en disco, igual que los .jar y la librería de la JDK. Todavía no se ha ejecutado nada.',
+      hl: ['ssd'], flow: [] },
+    { t: 'La JVM carga la clase en RAM',
+      d: 'java Main arranca la JVM. Su cargador de clases pide al sistema operativo leer el .class, y el sistema lo copia del SSD a la RAM, al metaspace, a través del controlador que lleva la CPU. Solo carga lo que el programa necesita.',
+      hl: ['ssd', 'os', 'meta'], flow: [['tl'], ['tr']], cmd: 'java -verbose:class Main' },
+    { t: 'El intérprete lee el bytecode',
+      d: 'La CPU ejecuta el código máquina del intérprete, que lee tu bytecode como si fueran datos desde la RAM, a través de las cachés. Las variables locales van a la pila.',
+      hl: ['cores', 'regs', 'l1', 'l2', 'meta', 'stack'], flow: [['tr', 'rev']] },
+    { t: 'new reserva objetos en el heap',
+      d: 'Cada new aparta espacio en el heap. La variable que lo apunta es solo una referencia y vive en la pila del hilo.',
+      hl: ['heap', 'stack', 'l1'], flow: [['tr']] },
+    { t: 'El JIT compila lo caliente',
+      d: 'Los contadores de la JVM detectan un método que se repite. Los hilos del compilador (C1 y C2) lo traducen a código máquina y lo guardan en el code cache.',
+      hl: ['cores', 'cc', 'meta'], flow: [['tr']], cmd: 'java -XX:+PrintCompilation Main' },
+    { t: 'La CPU ejecuta el código compilado',
+      d: 'Ahora la CPU salta directa al code cache y ejecuta instrucciones propias, sin intérprete: del code cache a las cachés y de ahí a los registros. Es la diferencia de 2,19 s a 0,14 s que medimos.',
+      hl: ['cc', 'l3', 'l2', 'l1', 'regs', 'cores'], flow: [['tr', 'rev']] },
+    { t: 'El GC limpia el heap',
+      d: 'Cuando el heap se llena, el GC parte de las variables de la pila, marca los objetos alcanzables y libera el resto. Usa varios núcleos y recorre mucha memoria, y de ahí vienen las pausas.',
+      hl: ['heap', 'stack', 'cores', 'l3'], flow: [['tr', 'rev']], gc: true, cmd: 'java -Xlog:gc Main' },
+    { t: 'Llega una petición por la red',
+      d: 'En un backend, el paquete entra por la tarjeta de red y el sistema operativo lo deja en un buffer en RAM. Un hilo de Tomcat o Netty lo lee y empieza a ejecutarse tu código.',
+      hl: ['nic', 'os', 'heap'], flow: [['tn', 'rev']] },
+    { t: 'La GPU, casi siempre en reposo',
+      d: 'Tu código Java normal no pasa por la GPU. Solo trabaja si usas JavaFX para dibujar o librerías específicas como TornadoVM o JCuda.',
+      hl: ['gpu'], flow: [] }
+  ];
+
+  /* ---------- Placa ---------- */
+  function core(n, x, y) {
+    var boxes = [['regs', 'REG'], ['l1', 'L1'], ['l2', 'L2']].map(function (b, k) {
+      return '<g class="part" data-id="' + b[0] + '"><rect class="shape sm" x="' + (x + 8 + k * 43) + '" y="' + (y + 30) + '" width="38" height="56" rx="4"/>' +
+        '<text class="t-sub c" x="' + (x + 27 + k * 43) + '" y="' + (y + 63) + '">' + b[1] + '</text></g>';
+    }).join('');
+    return '<g class="part" data-id="cores"><rect class="shape" x="' + x + '" y="' + y + '" width="140" height="100" rx="6"/>' +
+      '<text class="t-sub" x="' + (x + 8) + '" y="' + (y + 18) + '">Núcleo ' + n + '</text>' + boxes + '</g>';
+  }
+  function lines(ys, x1, x2) {
+    return ys.map(function (y) { return '<path d="M' + x1 + ' ' + y + 'H' + x2 + '" marker-start="url(#pad)" marker-end="url(#pad)"/>'; }).join('');
+  }
+  var dead = [2, 5, 9, 12];
+  var objs = '';
+  for (var i = 0; i < 16; i++) {
+    objs += '<rect class="obj' + (dead.indexOf(i) >= 0 ? ' dead' : '') + '" x="' + (700 + (i % 8) * 24) + '" y="' + (166 + Math.floor(i / 8) * 24) + '" width="16" height="14" rx="2"/>';
+  }
+  var frames = [236, 249, 262].map(function (y) { return '<rect class="frame" x="846" y="' + y + '" width="56" height="10" rx="2"/>'; }).join('');
+  var files = ['Main.class', 'Servicio.class', 'app.jar', 'lib/modules (JDK)'].map(function (f, k) {
+    return '<rect class="file" x="60" y="' + (175 + k * 38) + '" width="178" height="30" rx="4"/><text class="t-sub" x="70" y="' + (194 + k * 38) + '">' + f + '</text>';
+  }).join('');
+
+  var svg =
+    '<defs>' +
+    '<marker id="pad" markerWidth="8" markerHeight="8" refX="4" refY="4" markerUnits="userSpaceOnUse"><circle cx="4" cy="4" r="3.2" fill="var(--trace)"/></marker>' +
+    '<marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--java)"/></marker>' +
+    '</defs>' +
+    '<rect x="10" y="10" width="940" height="580" rx="16" fill="var(--board)" stroke="var(--line)" stroke-width="1.5"/>' +
+    '<circle class="hole" cx="30" cy="30" r="6"/><circle class="hole" cx="930" cy="30" r="6"/><circle class="hole" cx="30" cy="570" r="6"/><circle class="hole" cx="930" cy="570" r="6"/>' +
+    '<text class="silk" x="50" y="54">PLACA BASE · SIMPLIFICADA</text>' +
+    '<text class="silk" x="910" y="54" text-anchor="end">OpenJDK 21 · x86-64 · Linux</text>' +
+
+    /* buses */
+    '<g class="trace" data-id="tl">' + lines([215, 245], 254, 300) + '</g>' +
+    '<g class="trace" data-id="tr">' + lines([170, 200, 230, 260], 630, 672) + '</g>' +
+    '<g class="trace" data-id="tg"><path d="M330 388V408H110V432" marker-start="url(#pad)" marker-end="url(#pad)"/><path d="M346 388V416H126V432" marker-start="url(#pad)" marker-end="url(#pad)"/></g>' +
+    '<g class="trace" data-id="tn"><path d="M600 388V408H790V432" marker-start="url(#pad)" marker-end="url(#pad)"/><path d="M584 388V416H774V432" marker-start="url(#pad)" marker-end="url(#pad)"/></g>' +
+    '<text class="t-sub c" x="277" y="205">PCIe</text>' +
+    '<text class="t-sub c" x="651" y="158">DDR</text>' +
+    '<text class="t-sub c" x="220" y="402">PCIe</text>' +
+    '<text class="t-sub c" x="700" y="402">PCIe</text>' +
+
+    /* SSD */
+    '<g class="part" data-id="ssd"><rect class="shape" x="44" y="135" width="210" height="200" rx="8"/>' +
+    '<text class="t-name" x="60" y="161">SSD</text><text class="t-sub" x="238" y="161" text-anchor="end">NVMe</text>' + files + '</g>' +
+
+    /* CPU */
+    '<rect class="shape" x="300" y="82" width="330" height="306" rx="10"/>' +
+    '<text class="t-name" x="316" y="104">CPU · 4 núcleos</text>' +
+    core(1, 316, 116) + core(2, 474, 116) + core(3, 316, 228) + core(4, 474, 228) +
+    '<g class="part" data-id="l3"><rect class="shape" x="316" y="340" width="298" height="32" rx="5"/><text class="t-name c" x="465" y="361">Caché L3 · compartida</text></g>' +
+
+    /* RAM */
+    '<g class="part" data-id="ram"><rect class="shape" x="672" y="82" width="258" height="306" rx="8"/>' +
+    '<text class="t-name" x="688" y="104">RAM · proceso JVM</text>' +
+    '<g class="part" data-id="heap"><rect class="shape seg s-heap" x="688" y="116" width="226" height="104" rx="5"/>' +
+    '<text class="t-name" x="700" y="137">Heap</text><text class="t-sub" x="700" y="153">objetos y arrays (new)</text>' + objs + '</g>' +
+    '<g class="part" data-id="stack"><rect class="shape seg s-stack" x="688" y="228" width="226" height="54" rx="5"/>' +
+    '<text class="t-name" x="700" y="249">Pilas de hilos</text><text class="t-sub" x="700" y="268">variables locales</text>' + frames + '</g>' +
+    '<g class="part" data-id="meta"><rect class="shape seg s-meta" x="688" y="290" width="226" height="40" rx="5"/>' +
+    '<text class="t-name" x="700" y="308">Metaspace</text><text class="t-sub" x="700" y="323">clases cargadas</text></g>' +
+    '<g class="part" data-id="cc"><rect class="shape seg s-cc" x="688" y="338" width="226" height="40" rx="5"/>' +
+    '<text class="t-name" x="700" y="356">Code cache</text><text class="t-sub" x="700" y="371">código máquina del JIT</text></g>' +
+    '</g>' +
+    '<line x1="876" y1="235" x2="876" y2="208" stroke="var(--java)" stroke-width="1.6" marker-end="url(#ah)"/>' +
+
+    /* GPU y red */
+    '<g class="part" data-id="gpu"><rect class="shape" x="44" y="432" width="210" height="98" rx="8"/>' +
+    '<text class="t-name" x="60" y="465">GPU</text><text class="t-sub" x="60" y="485">tarjeta gráfica</text>' +
+    '<circle class="deco" cx="214" cy="481" r="21"/><circle class="deco" cx="214" cy="481" r="4"/><path class="deco" d="M214 460V502M193 481H235"/></g>' +
+    '<g class="part" data-id="nic"><rect class="shape" x="672" y="432" width="258" height="98" rx="8"/>' +
+    '<text class="t-name" x="688" y="465">Tarjeta de red</text><text class="t-sub" x="688" y="485">Ethernet / wifi</text>' +
+    '<rect class="deco" x="866" y="452" width="44" height="34" rx="3"/><path class="deco" d="M874 478V486M882 478V486M890 478V486M898 478V486"/></g>' +
+
+    /* leyenda */
+    '<rect class="lg-hl" x="300" y="446" width="22" height="14" rx="3"/><text class="t-sub" x="332" y="458">pieza activa en este paso</text>' +
+    '<rect class="shape soft" x="300" y="474" width="22" height="14" rx="3"/><text class="t-sub" x="332" y="486">software (no es hardware)</text>' +
+    '<g class="trace"><path d="M300 507H322"/></g><text class="t-sub" x="332" y="511">bus (se anima al mover datos)</text>' +
+
+    /* sistema operativo */
+    '<g class="part" data-id="os"><rect class="shape soft" x="30" y="544" width="900" height="34" rx="8"/>' +
+    '<text class="t-sub c" x="480" y="566">Sistema operativo · memoria virtual · hilos · llamadas al sistema</text></g>';
+
+  var board = document.getElementById('board');
+  board.innerHTML = svg;
+  var panel = document.getElementById('panel');
+  var wrap = document.getElementById('wrap');
+  var chipsEl = document.getElementById('chips');
+  var bExplore = document.getElementById('m-explore');
+  var bTour = document.getElementById('m-tour');
+
+  chipsEl.innerHTML = ORDER.map(function (id) {
+    return '<button class="chip" data-id="' + id + '" aria-pressed="false">' + PARTS[id].short + '</button>';
+  }).join('');
+
+  /* ---------- Estado ---------- */
+  var mode = 'explore', sel = 'heap', step = 0;
+
+  function cmdHtml(c) { return c ? '<pre class="cmd">$ ' + c + '</pre>' : ''; }
+
+  function panelExplore() {
+    var p = PARTS[sel];
+    return '<div class="kicker">' + p.kind + '</div><h2>' + p.title + '</h2>' +
+      '<div class="lab">' + p.hwl + '</div><p>' + p.hw + '</p>' +
+      '<div class="lab">En Java</div><p>' + p.java + '</p>' +
+      (p.lat ? '<div class="metrics"><div class="m"><b>' + p.lat + '</b><span>latencia típica</span></div>' +
+        '<div class="m"><b>' + p.human + '</b><span>si L1 durara 1 s</span></div></div>' : '') +
+      cmdHtml(p.cmd);
+  }
+  function panelTour() {
+    var s = STEPS[step], dots = '';
+    for (var k = 0; k < STEPS.length; k++) {
+      dots += '<button class="dot" data-act="dot" data-i="' + k + '" aria-label="Ir al paso ' + (k + 1) + '"' + (k === step ? ' aria-current="step"' : '') + '></button>';
+    }
+    return '<div class="kicker">Paso ' + (step + 1) + ' de ' + STEPS.length + '</div><h2>' + s.t + '</h2><p>' + s.d + '</p>' + cmdHtml(s.cmd) +
+      '<div class="nav"><button class="btn" data-act="prev"' + (step === 0 ? ' disabled' : '') + '>Anterior</button>' +
+      '<button class="btn primary" data-act="next"' + (step === STEPS.length - 1 ? ' disabled' : '') + '>Siguiente</button>' +
+      '<div class="dots">' + dots + '</div></div>';
+  }
+
+  function render(center) {
+    var tour = mode === 'tour';
+    board.classList.toggle('tour', tour);
+    board.classList.toggle('gc', tour && !!STEPS[step].gc);
+    bExplore.setAttribute('aria-pressed', String(!tour));
+    bTour.setAttribute('aria-pressed', String(tour));
+    chipsEl.hidden = tour;
+    Array.prototype.forEach.call(chipsEl.children, function (c) { c.setAttribute('aria-pressed', String(!tour && c.dataset.id === sel)); });
+
+    Array.prototype.forEach.call(board.querySelectorAll('.part'), function (el) {
+      var on = tour ? STEPS[step].hl.indexOf(el.dataset.id) >= 0 : el.dataset.id === sel;
+      el.classList.toggle('sel', !tour && on);
+      el.classList.toggle('hl', tour && on);
+    });
+    Array.prototype.forEach.call(board.querySelectorAll('.trace[data-id]'), function (el) {
+      var f = null;
+      if (tour) STEPS[step].flow.forEach(function (x) { if (x[0] === el.dataset.id) f = x; });
+      el.classList.toggle('hl', !!f);
+      el.classList.toggle('rev', !!(f && f[1] === 'rev'));
+    });
+    panel.innerHTML = tour ? panelTour() : panelExplore();
+
+    if (center && wrap.scrollWidth > wrap.clientWidth) {
+      var t = board.querySelector('.part.hl, .part.sel');
+      if (t) {
+        var r = t.getBoundingClientRect(), w = wrap.getBoundingClientRect();
+        wrap.scrollTo({ left: wrap.scrollLeft + (r.left - w.left) - (w.width - r.width) / 2, behavior: reduce ? 'auto' : 'smooth' });
+      }
+    }
+  }
+
+  /* ---------- Eventos ---------- */
+  bExplore.addEventListener('click', function () { mode = 'explore'; render(true); });
+  bTour.addEventListener('click', function () { mode = 'tour'; render(true); });
+  chipsEl.addEventListener('click', function (e) {
+    var c = e.target.closest('.chip'); if (!c) return;
+    sel = c.dataset.id; render(true);
+  });
+  board.addEventListener('click', function (e) {
+    var p = e.target.closest('.part'); if (!p) return;
+    mode = 'explore'; sel = p.dataset.id; render(false);
+  });
+  panel.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]'); if (!b) return;
+    var act = b.dataset.act, i = b.dataset.i;
+    if (act === 'next' && step < STEPS.length - 1) step++;
+    else if (act === 'prev' && step > 0) step--;
+    else if (act === 'dot') step = Number(i);
+    render(true);
+    var again = act === 'dot' ? panel.querySelector('[data-i="' + step + '"]') : panel.querySelector('[data-act="' + act + '"]:not(:disabled)');
+    if (again) again.focus();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (mode !== 'tour') return;
+    if (e.key === 'ArrowRight' && step < STEPS.length - 1) { step++; render(true); }
+    if (e.key === 'ArrowLeft' && step > 0) { step--; render(true); }
+  });
+
+  render(false);
+})();
+</script>
+</body>
+</html>
