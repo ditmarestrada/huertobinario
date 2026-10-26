@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="De JDBC a Spring Data JPA: las capas de acceso a datos en Java, una tabla comparativa y los conceptos clave (dirty checking, LAZY, EAGER, N+1, caché).">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Acceso a datos en Java">
+<meta property="og:site_name" content="HuertoBinario">
+<meta property="og:description" content="De JDBC a Spring Data JPA: las capas de acceso a datos en Java, una tabla comparativa y los conceptos clave (dirty checking, LAZY, EAGER, N+1, caché).">
+<meta property="og:url" content="https://huertobinario.web.app/acceso-datos/">
+<meta property="og:image" content="https://huertobinario.web.app/acceso-datos/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Esquema de capas de acceso a datos en Java: Spring Data JPA, JPA, Hibernate, JDBC y la base de datos">
+<meta property="og:locale" content="es_ES">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://huertobinario.web.app/acceso-datos/">
+<title>Acceso a datos en Java · HuertoBinario</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Mismo sistema visual que "Java en la placa": cobre = lo que se resalta, gris verdoso para la placa. */
+:root {
+  --bg: #edf0f2;
+  --surface: #f8f9fa;
+  --fg: #18222b;
+  --muted: #566471;
+  --line: #aab5be;
+  --board: #d8e2dd;
+  --chip: #f3f6f6;
+  --chip2: #e4ebea;
+  --chip-line: #74838d;
+  --trace: #b79b7a;
+  --java: #c8501a;
+  --java-soft: #f7d9c8;
+  --java-ink: #9a3b0e;
+  --ok: #2f7d4f;
+  --ok-soft: #d6ecde;
+  --no: #8a4b3a;
+  --no-soft: #f1ded8;
+  --seg-a: #cde0ee;
+  --seg-b: #e6dfc9;
+  --seg-c: #dcd6ea;
+  --font-display: 'IBM Plex Sans Condensed', 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1415; --surface: #121c1d; --fg: #e3ebe8; --muted: #92a39e; --line: #34443f;
+    --board: #10201c; --chip: #192b27; --chip2: #223630; --chip-line: #5d766e; --trace: #7a6248;
+    --java: #f08c40; --java-soft: #3b2a1c; --java-ink: #f3a266;
+    --ok: #6cc28c; --ok-soft: #17301f; --no: #d49a86; --no-soft: #33211b;
+    --seg-a: #1d3342; --seg-b: #342f22; --seg-c: #2c2842;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1415; --surface: #121c1d; --fg: #e3ebe8; --muted: #92a39e; --line: #34443f;
+  --board: #10201c; --chip: #192b27; --chip2: #223630; --chip-line: #5d766e; --trace: #7a6248;
+  --java: #f08c40; --java-soft: #3b2a1c; --java-ink: #f3a266;
+  --ok: #6cc28c; --ok-soft: #17301f; --no: #d49a86; --no-soft: #33211b;
+  --seg-a: #1d3342; --seg-b: #342f22; --seg-c: #2c2842;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 15px/1.55 var(--font-body);
+  padding-block: 22px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1240px; margin: 0 auto; }
+.back { display: inline-block; margin-bottom: 14px; font: 500 13px var(--font-mono); color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--java-ink); }
+h1 { font: 700 30px/1.1 var(--font-display); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+header p { margin: 8px 0 0; color: var(--muted); max-width: 66ch; }
+h2.sec { font: 700 22px/1.15 var(--font-display); margin: 44px 0 4px; text-wrap: balance; }
+.sec-sub { margin: 0 0 14px; color: var(--muted); max-width: 70ch; }
+button:focus-visible { outline: 2px solid var(--java); outline-offset: 2px; }
+
+.tldr { margin: 16px 0 0; max-width: 72ch; padding: 12px 16px; border: 1px solid var(--line); border-left: 3px solid var(--java); border-radius: 0 10px 10px 0; background: var(--surface); }
+.tldr b { display: block; font: 500 11px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--java-ink); margin-bottom: 4px; }
+.tldr ul { margin: 0; padding-left: 18px; }
+.tldr li { margin: 3px 0; }
+.toc { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 16px 0 0; font: 500 13px var(--font-mono); }
+.toc a { color: var(--muted); text-decoration: none; }
+.toc a:hover { color: var(--java-ink); }
+h2.sec { scroll-margin-top: 16px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.chip { font: 500 12px var(--font-mono); padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); cursor: pointer; }
+.chip[aria-pressed="true"] { border-color: var(--java); background: var(--java-soft); }
+
+/* Capas */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 20px; align-items: start; }
+.fig { margin: 0; min-width: 0; }
+.board-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--board); }
+.board { display: block; width: 100%; min-width: 640px; height: auto; }
+figcaption { color: var(--muted); font-size: 13px; margin-top: 8px; max-width: 80ch; }
+.hint { display: none; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 20px; min-height: 420px; position: sticky; top: 16px; min-width: 0; }
+.kicker { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.panel h3 { font: 700 25px/1.15 var(--font-display); margin: 9px 0 6px; text-wrap: balance; }
+.lab { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--java-ink); margin: 16px 0 6px; }
+.panel p { margin: 0; max-width: 60ch; }
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+.m { border-top: 1px solid var(--line); padding-top: 8px; min-width: 0; }
+.m b { display: block; font: 600 16px/1.25 var(--font-display); }
+.m span { font: 400 12px var(--font-mono); color: var(--muted); }
+pre.code { margin: 14px 0 0; font: 400 12.5px/1.5 var(--font-mono); background: var(--chip2); border-radius: 6px; padding: 10px 12px; overflow-x: auto; white-space: pre; }
+pre.code.sql { border-left: 3px solid var(--java); }
+.board text { font-family: var(--font-body); }
+.t-name { font: 600 16px var(--font-display); fill: var(--fg); }
+.t-sub { font: 400 12px var(--font-mono); fill: var(--fg); opacity: 0.78; }
+.c { text-anchor: middle; }
+.silk { font: 500 12px var(--font-mono); letter-spacing: 0.12em; fill: var(--muted); }
+.shape { fill: var(--chip); stroke: var(--chip-line); stroke-width: 1.5; }
+.shape.a { fill: var(--seg-a); }
+.shape.b { fill: var(--seg-b); }
+.shape.c2 { fill: var(--seg-c); }
+.shape.soft { fill: transparent; stroke-dasharray: 6 4; }
+.hole { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; }
+.trace { fill: none; stroke: var(--trace); stroke-width: 3; stroke-linecap: round; }
+.arrow { fill: var(--trace); }
+.part { cursor: pointer; }
+.part:hover > .shape { stroke: var(--java); }
+.part.sel > .shape { fill: var(--java-soft); stroke: var(--java); stroke-width: 2.5; }
+.part.rel > .shape { stroke: var(--java); stroke-width: 2; }
+
+/* Tabla */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 860px; font-size: 14px; }
+th { font: 500 11px/1.3 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--chip2); }
+td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.name { font: 600 15px/1.25 var(--font-display); }
+td.name small { display: block; font: 400 12px/1.4 var(--font-body); color: var(--muted); margin-top: 2px; }
+tr.dim td { opacity: 0.28; }
+tr.top td { background: var(--java-soft); }
+.pill { display: inline-block; font: 500 12px var(--font-mono); padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+.pill.yes { background: var(--ok-soft); color: var(--ok); }
+.pill.no { background: var(--no-soft); color: var(--no); }
+.pill.mid { background: var(--chip2); color: var(--fg); }
+.star { font: 600 11px var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--java-ink); }
+
+/* Conceptos */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.cbox { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 20px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.cbox h3 { font: 700 25px/1.15 var(--font-display); margin: 0 0 8px; text-wrap: balance; }
+.cbox p { margin: 0 0 10px; max-width: 60ch; }
+.cbox ul { margin: 8px 0 0; padding-left: 18px; }
+.cbox li { margin: 4px 0; }
+.cbox pre.code:first-child { margin-top: 0; }
+.say { margin-top: 14px; padding: 10px 12px; border-left: 3px solid var(--java); background: var(--java-soft); border-radius: 0 6px 6px 0; font-size: 14px; }
+.say b { font: 500 11px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--java-ink); display: block; margin-bottom: 2px; }
+
+/* Qué elegir */
+.pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px 16px; }
+.card .when { font: 500 11px/1.3 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.card b { display: block; font: 700 18px/1.2 var(--font-display); margin-top: 6px; color: var(--java-ink); }
+.card p { margin: 6px 0 0; font-size: 14px; }
+.card.top { border-color: var(--java); background: var(--java-soft); }
+
+.foot { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font: 400 12px var(--font-mono); }
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .panel { order: -1; position: static; min-height: 0; }
+  .hint { display: block; }
+  .cbox { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../">← HuertoBinario</a>
+  <header>
+    <h1>Acceso a datos en Java</h1>
+    <p>De JDBC a Spring Data JPA: qué capa hay encima de cuál, qué opciones existen para hablar con una base de datos, qué cambia entre ellas y cuándo usar cada una. Pulsa una pieza, filtra la tabla o recorre los conceptos.</p>
+    <div class="tldr"><b>En 30 segundos</b><ul>
+      <li><strong>JPA</strong> es el contrato, <strong>Hibernate</strong> lo implementa y <strong>Spring Data JPA</strong> te ahorra escribir los repositorios.</li>
+      <li>Si necesitas controlar el SQL (reportes, consultas pesadas), usa <strong>JdbcTemplate</strong>.</li>
+      <li>El problema que más duele en producción es el <strong>N+1</strong>: 1 lista, 1 consulta extra por cada fila.</li>
+    </ul></div>
+    <nav class="toc" aria-label="Secciones"><a href="#capas">1 · Capas</a><a href="#tabla">2 · Opciones</a><a href="#conceptos">3 · Conceptos</a><a href="#elegir">4 · Qué elegir</a></nav>
+  </header>
+
+  <!-- 1. CAPAS -->
+  <h2 class="sec" id="capas">1. Las capas</h2>
+  <p class="sec-sub">Spring Data JPA no está entre JPA e Hibernate: está encima de los dos. Cada flecha significa "llama a".</p>
+  <div class="grid">
+    <figure class="fig">
+      <div class="board-wrap" id="wrap">
+        <svg class="board" id="board" viewBox="0 0 960 620" role="img" aria-label="Diagrama de capas: tu código llama a Spring Data JPA, JPA e Hibernate; a Spring Data JDBC y JdbcTemplate; o a Spring Data R2DBC y un driver reactivo; todos acaban en la base de datos"></svg>
+      </div>
+      <figcaption>Esquema simplificado. Hibernate Reactive, MyBatis, jOOQ y los DAOs con EntityManager a mano no se dibujan para no saturarlo.<span class="hint"> Desliza el esquema para verlo entero.</span></figcaption>
+    </figure>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+
+  <!-- 2. TABLA -->
+  <h2 class="sec" id="tabla">2. Las siete opciones más habituales, lado a lado</h2>
+  <p class="sec-sub">De más bajo a más alto nivel. Filtra para ver solo las que te interesan.</p>
+  <div class="chips" id="filters" role="group" aria-label="Filtros de la tabla"></div>
+  <div class="tbl-wrap">
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th>Opción</th><th>Quién escribe el SQL</th><th>Entidades y relaciones</th>
+          <th>Dirty checking, LAZY, caché</th><th>Bloqueante</th><th>Uso real</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- 3. CONCEPTOS -->
+  <h2 class="sec" id="conceptos">3. Los conceptos que más se preguntan</h2>
+  <p class="sec-sub">Los tres que marcan la diferencia entre JPA y el resto (dirty checking, LAZY, caché), más EAGER y el problema N+1. Ejemplos con una entidad Autor que tiene muchos Libro.</p>
+  <div class="tabs" id="tabs" role="group" aria-label="Conceptos"></div>
+  <div class="cbox" id="cbox" aria-live="polite"></div>
+
+  <!-- 4. QUÉ ELEGIR -->
+  <h2 class="sec" id="elegir">4. Qué elegir</h2>
+  <p class="sec-sub">Una regla corta por situación.</p>
+  <div class="pick" id="pick"></div>
+
+  <div class="foot">HuertoBinario · Acceso a datos en Java · El SQL de los ejemplos es aproximado: el alias y el orden de columnas varían según la versión de Hibernate.</div>
+</div>
+
+<script>
+(function () {
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  /* ---------- 1. Capas ---------- */
+  var PARTS = {
+    code: { kind: 'Tu aplicación', title: 'Tu código', rel: ['sdjpa', 'sdjdbc', 'sdr2dbc'],
+      what: 'Los servicios y controladores de tu app. Llaman a un repositorio o a una plantilla y no se preocupan de cómo se llega a la base de datos.',
+      does: 'Elegir qué capa usar es una decisión de cada proyecto. Se pueden combinar: JPA para el CRUD normal y JdbcTemplate para reportes.',
+      m1: ['Combinables', 'en el mismo proyecto'], m2: ['3 caminos', 'JPA, JDBC y R2DBC'] },
+    sdjpa: { kind: 'Spring · librería', title: 'Spring Data JPA', rel: ['jpa'],
+      what: 'Librería de Spring con código real, no una especificación. Es un cliente de JPA: llama al EntityManager por ti.',
+      does: 'Genera la implementación de tus repositorios en tiempo de ejecución, convierte nombres de método en consultas (findByNombre), añade paginación y traduce las excepciones a DataAccessException.',
+      m1: ['El más usado', 'en empresas con Spring Boot'], m2: ['data-jpa', 'spring-boot-starter'],
+      code: 'public interface AutorRepository\n    extends JpaRepository<Autor, Long> {\n  List<Autor> findByNombre(String n);\n}' },
+    jpa: { kind: 'Especificación', title: 'JPA', rel: ['hib'],
+      what: 'Un contrato: interfaces y anotaciones (jakarta.persistence). EntityManager, @Entity, @OneToMany, JPQL. Sola no hace nada.',
+      does: 'Define cómo se mapean objetos a tablas. Hay varias implementaciones (EclipseLink, OpenJPA) pero Hibernate domina.',
+      m1: ['Interfaces', 'sin código que ejecute'], m2: ['jakarta.*', 'desde Jakarta EE 9'],
+      code: 'em.persist(autor);\nem.find(Autor.class, 1L);' },
+    hib: { kind: 'Implementación', title: 'Hibernate', rel: ['jdbc'],
+      what: 'Donde ocurre el trabajo real: mapea objetos a tablas, genera el SQL y lo ejecuta.',
+      does: 'Dirty checking, caché de primer y segundo nivel, proxies para LAZY. Añade extras propios como @BatchSize.',
+      m1: ['Dirty checking', 'LAZY y caché L1'], m2: ['Genera SQL', 'y lo manda por JDBC'] },
+    sdjdbc: { kind: 'Spring · librería', title: 'Spring Data JDBC', rel: ['jt'],
+      what: 'Repositorios simples sobre JDBC. Mismo estilo que Spring Data JPA, pero sin Hibernate ni sesión.',
+      does: 'Sin dirty checking, sin LAZY, sin caché: siempre llamas a save para actualizar y cada consulta va a la base de datos. Más predecible, con menos funciones.',
+      m1: ['Sin sesión', 'ni proxies LAZY'], m2: ['data-jdbc', 'spring-boot-starter'],
+      code: 'public interface AutorRepository\n    extends CrudRepository<Autor, Long> {\n  List<Autor> findByNombre(String n);\n}' },
+    jt: { kind: 'Spring Framework · utilidad', title: 'JdbcTemplate', rel: ['jdbc'],
+      what: 'Clase del módulo spring-jdbc (de Spring Framework, no de Spring Boot). Simplifica JDBC: abre y cierra conexiones y maneja excepciones.',
+      does: 'Tú escribes el SQL y mapeas las filas a objetos. No es un ORM. Ideal para consultas pesadas y reportes.',
+      m1: ['SQL a mano', 'control total'], m2: ['JdbcClient', 'API más fluida (Spring 6.1)'],
+      code: 'jdbc.query(\n  "SELECT id, nombre FROM autor WHERE nombre = ?",\n  (rs, i) -> new Autor(rs.getLong("id"),\n                      rs.getString("nombre")),\n  nombre);' },
+    sdr2dbc: { kind: 'Spring · reactivo', title: 'Spring Data R2DBC', rel: ['r2dbc'],
+      what: 'Repositorios reactivos: los métodos devuelven Mono y Flux. No es "Hibernate reactivo", es más simple.',
+      does: 'Sin relaciones automáticas, sin LAZY, sin dirty checking. Encaja con WebFlux, donde bloquear un hilo es un problema.',
+      m1: ['No bloqueante', 'Mono y Flux'], m2: ['Con WebFlux', 'de punta a punta'] },
+    r2dbc: { kind: 'Especificación · reactiva', title: 'R2DBC y su driver', rel: ['db'],
+      what: 'La alternativa no bloqueante a JDBC, con drivers para PostgreSQL, MySQL, SQL Server y H2.',
+      does: 'Envía la consulta y libera el hilo mientras la base de datos responde. Por eso no se mezcla con JPA, que usa JDBC.',
+      m1: ['Sin bloquear', 'hilos libres'], m2: ['Drivers', 'por base de datos'] },
+    jdbc: { kind: 'API estándar de Java', title: 'JDBC', rel: ['db'],
+      what: 'La API base de Java para hablar con bases de datos relacionales. Todo lo demás (Hibernate, JdbcTemplate) se apoya en ella.',
+      does: 'Conexiones, sentencias y resultados. Es bloqueante: cada consulta deja el hilo esperando la respuesta. Abrir conexiones es caro, así que salen de un pool (HikariCP en Spring Boot).',
+      m1: ['Bloqueante', 'un hilo por consulta'], m2: ['Base de todo', 'JPA y JdbcTemplate'] },
+    db: { kind: 'Almacenamiento', title: 'Base de datos', rel: [],
+      what: 'PostgreSQL, MySQL, Oracle, SQL Server, H2. Recibe SQL y devuelve filas.',
+      does: 'Es el destino de todos los caminos. Lo que cambia entre ellos es cuánto SQL escribes tú y cuánto genera la librería.',
+      m1: ['SQL', 'el idioma común'], m2: ['Un solo destino', 'varios caminos'] }
+  };
+
+  function box(id, x, y, w, h, cls, name, sub) {
+    return '<g class="part" data-id="' + id + '"><rect class="shape ' + cls + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="8"/>' +
+      '<text class="t-name" x="' + (x + 14) + '" y="' + (y + 24) + '">' + name + '</text>' +
+      '<text class="t-sub" x="' + (x + 14) + '" y="' + (y + 43) + '">' + sub + '</text></g>';
+  }
+  function arrow(x, y1, y2) {
+    return '<path class="trace" d="M' + x + ' ' + y1 + 'V' + (y2 - 7) + '"/><path class="arrow" d="M' + (x - 6) + ' ' + (y2 - 8) + 'L' + x + ' ' + y2 + 'L' + (x + 6) + ' ' + (y2 - 8) + 'z"/>';
+  }
+  var svg =
+    '<rect x="10" y="10" width="940" height="600" rx="16" fill="var(--board)" stroke="var(--line)" stroke-width="1.5"/>' +
+    '<circle class="hole" cx="30" cy="30" r="6"/><circle class="hole" cx="930" cy="30" r="6"/><circle class="hole" cx="30" cy="590" r="6"/><circle class="hole" cx="930" cy="590" r="6"/>' +
+    '<text class="silk" x="50" y="42">ACCESO A DATOS · SIMPLIFICADO</text>' +
+    '<text class="silk" x="910" y="42" text-anchor="end">JAVA 21 · SPRING BOOT 3 Y 4</text>' +
+    /* Tu código */
+    box('code', 40, 60, 880, 52, '', 'Tu código', 'servicios y controladores') +
+    /* Fila 1 */
+    box('sdjpa', 40, 150, 260, 58, 'a', 'Spring Data JPA', 'repositorios generados') +
+    box('sdjdbc', 340, 150, 260, 58, 'b', 'Spring Data JDBC', 'repositorios simples') +
+    box('sdr2dbc', 640, 150, 280, 58, 'c2', 'Spring Data R2DBC', 'repositorios reactivos') +
+    /* Fila 2 */
+    box('jpa', 40, 246, 260, 58, 'a', 'JPA', 'especificación · EntityManager') +
+    box('jt', 340, 246, 260, 58, 'b', 'JdbcTemplate', 'SQL a mano · JdbcClient') +
+    box('r2dbc', 640, 246, 280, 58, 'c2', 'R2DBC + driver', 'no bloqueante') +
+    /* Fila 3 */
+    box('hib', 40, 342, 260, 58, 'a', 'Hibernate', 'implementación · genera SQL') +
+    /* JDBC */
+    box('jdbc', 40, 438, 560, 52, '', 'JDBC', 'API estándar de Java · bloqueante') +
+    /* DB */
+    box('db', 40, 522, 880, 46, '', 'Base de datos', 'PostgreSQL · MySQL · Oracle · H2') +
+    /* Flechas */
+    arrow(170, 112, 150) + arrow(470, 112, 150) + arrow(780, 112, 150) +
+    arrow(170, 208, 246) + arrow(170, 304, 342) + arrow(170, 400, 438) +
+    arrow(470, 208, 246) + arrow(470, 304, 438) +
+    arrow(780, 208, 246) + arrow(780, 304, 522) +
+    arrow(320, 490, 522);
+
+  var board = document.getElementById('board');
+  board.innerHTML = svg;
+  var panel = document.getElementById('panel');
+  var sel = 'sdjpa';
+
+  function renderPanel() {
+    var p = PARTS[sel];
+    panel.innerHTML =
+      '<div class="kicker">' + p.kind + '</div><h3>' + p.title + '</h3>' +
+      '<div class="lab">Qué es</div><p>' + p.what + '</p>' +
+      '<div class="lab">Qué hace por ti</div><p>' + p.does + '</p>' +
+      '<div class="metrics"><div class="m"><b>' + p.m1[0] + '</b><span>' + p.m1[1] + '</span></div>' +
+      '<div class="m"><b>' + p.m2[0] + '</b><span>' + p.m2[1] + '</span></div></div>' +
+      (p.code ? '<pre class="code">' + esc(p.code) + '</pre>' : '');
+  }
+  function renderBoard() {
+    var rel = (PARTS[sel] && PARTS[sel].rel) || [];
+    Array.prototype.forEach.call(board.querySelectorAll('.part'), function (el) {
+      var id = el.dataset.id;
+      el.classList.toggle('sel', id === sel);
+      el.classList.toggle('rel', rel.indexOf(id) >= 0);
+    });
+  }
+  board.addEventListener('click', function (e) {
+    var p = e.target.closest('.part'); if (!p || !PARTS[p.dataset.id]) return;
+    sel = p.dataset.id; renderBoard(); renderPanel();
+    try { history.replaceState(null, '', '#' + sel); } catch (err) {}
+  });
+  renderBoard(); renderPanel();
+
+  /* ---------- 2. Tabla ---------- */
+  var OPTS = [
+    { n: 'JDBC puro', s: 'API estándar de Java', sql: 'Tú', ent: ['no', 'No'], mag: ['no', 'No'], blo: ['yes', 'Sí'], uso: 'Casi nunca directo', tags: ['block'] },
+    { n: 'JdbcTemplate / JdbcClient', s: 'Utilidad de Spring sobre JDBC', sql: 'Tú', ent: ['no', 'No, mapeas filas a mano'], mag: ['no', 'No'], blo: ['yes', 'Sí'], uso: 'Consultas pesadas, reportes', tags: ['block'] },
+    { n: 'Spring Data JDBC', s: 'Repositorios simples sobre JdbcTemplate', sql: 'Generado (simple) o tú', ent: ['mid', 'Limitadas (agregados)'], mag: ['no', 'No'], blo: ['yes', 'Sí'], uso: 'Minoritario, en crecimiento', tags: ['block'] },
+    { n: 'JPA + Hibernate con EntityManager', s: 'Especificación + implementación, sin Spring Data', sql: 'JPQL o generado', ent: ['yes', 'Completas'], mag: ['yes', 'Sí'], blo: ['yes', 'Sí'], uso: 'DAOs a mano, proyectos legados', tags: ['ent', 'block'] },
+    { n: 'Spring Data JPA', s: 'Repositorios generados sobre JPA e Hibernate', sql: 'Generado, JPQL o nativo', ent: ['yes', 'Completas'], mag: ['yes', 'Sí'], blo: ['yes', 'Sí'], uso: 'El más usado', tags: ['ent', 'block', 'top'], top: true },
+    { n: 'Spring Data R2DBC', s: 'Repositorios reactivos sobre R2DBC', sql: 'Generado o tú', ent: ['mid', 'Muy limitadas, sin Hibernate'], mag: ['no', 'No'], blo: ['no', 'No (reactivo)'], uso: 'Solo con WebFlux', tags: ['react'] },
+    { n: 'Hibernate Reactive', s: 'Hibernate no bloqueante', sql: 'JPQL o generado', ent: ['yes', 'Completas'], mag: ['yes', 'Sí'], blo: ['no', 'No (reactivo)'], uso: 'Más común en Quarkus', tags: ['ent', 'react'] }
+  ];
+  var FILTERS = [
+    ['all', 'Todas'], ['top', 'Las más usadas'], ['ent', 'Con entidades y relaciones'], ['block', 'Bloqueantes'], ['react', 'Reactivas']
+  ];
+  var filt = 'all';
+  var fEl = document.getElementById('filters');
+  var tb = document.getElementById('tbody');
+  fEl.innerHTML = FILTERS.map(function (f) { return '<button class="chip" data-f="' + f[0] + '" aria-pressed="false">' + f[1] + '</button>'; }).join('');
+  function pill(x) { return '<span class="pill ' + x[0] + '">' + x[1] + '</span>'; }
+  function renderTable() {
+    Array.prototype.forEach.call(fEl.children, function (c) { c.setAttribute('aria-pressed', String(c.dataset.f === filt)); });
+    tb.innerHTML = OPTS.map(function (o) {
+      var show = filt === 'all' || o.tags.indexOf(filt) >= 0;
+      return '<tr class="' + (show ? '' : 'dim') + (o.top && show && filt !== 'all' ? ' top' : '') + '">' +
+        '<td class="name">' + o.n + '<small>' + o.s + '</small></td>' +
+        '<td>' + o.sql + '</td><td>' + pill(o.ent) + '</td><td>' + pill(o.mag) + '</td><td>' + pill(o.blo) + '</td>' +
+        '<td>' + (o.top ? '<span class="star">★ ' + o.uso + '</span>' : o.uso) + '</td></tr>';
+    }).join('');
+  }
+  fEl.addEventListener('click', function (e) {
+    var c = e.target.closest('.chip'); if (!c) return;
+    filt = c.dataset.f; renderTable();
+  });
+  renderTable();
+
+  /* ---------- 3. Conceptos ---------- */
+  var CONC = [
+    { id: 'dirty', short: 'Dirty checking', title: 'Dirty checking',
+      p: 'Hibernate guarda una copia del estado de cada entidad cuando la carga. Antes de confirmar la transacción (en el flush) compara y, si algo cambió, lanza el UPDATE solo.',
+      li: ['Solo funciona con la entidad managed, dentro de la transacción.', 'Fuera de ella no hay seguimiento.', 'En Spring Data JDBC no existe: siempre necesitas save.'],
+      code: '@Transactional\npublic void renombrar(Long id) {\n    Autor a = repo.findById(id).orElseThrow();\n    a.setNombre("Nuevo nombre");   // sin save()\n}   // en el flush, antes del commit, se lanza el UPDATE',
+      sql: 'update autor set nombre=? where id=?',
+      say: 'Si modifico una entidad managed dentro de una transacción, Hibernate detecta el cambio y hace el UPDATE al flush, sin llamar a save.' },
+    { id: 'lazy', short: 'LAZY', title: 'LAZY (carga perezosa)',
+      p: 'Hibernate no trae una relación hasta que la usas. Mientras tanto pone un proxy, un objeto vacío, en su lugar.',
+      li: ['Ventaja: no cargas datos que quizá nunca necesitas.', 'Riesgo 1: N+1 si lo usas dentro de un bucle.', 'Riesgo 2: LazyInitializationException si accedes cuando la sesión ya se cerró.', '@OneToMany y @ManyToMany son LAZY por defecto.'],
+      code: '@OneToMany(mappedBy = "autor", fetch = FetchType.LAZY)\nprivate List<Libro> libros;\n\n// Uso, dentro de una transacción\n@Transactional\nvoid ejemplo() {\n    Autor a = repo.findById(1L).get();  // SELECT de autor\n    a.getLibros().size();               // aquí, SELECT de libros\n}',
+      sql: 'select a1_0.id, a1_0.nombre from autor a1_0 where a1_0.id=?\n-- solo al tocar la lista:\nselect l1_0.autor_id, l1_0.id, l1_0.titulo\nfrom libro l1_0 where l1_0.autor_id=?',
+      say: 'LAZY carga la relación bajo demanda mediante un proxy. Lo prefiero por defecto y traigo lo necesario con JOIN FETCH.' },
+    { id: 'eager', short: 'EAGER', title: 'EAGER (carga inmediata)',
+      p: 'La relación se trae siempre junto con la entidad, la uses o no. Se declara en el atributo fetch.',
+      li: ['@ManyToOne y @OneToOne son EAGER por defecto.', 'findById usa un JOIN: una sola consulta.', 'findAll NO usa JOIN: aparece un N+1 oculto.', 'No se puede apagar por consulta.'],
+      code: '@OneToMany(mappedBy = "autor", fetch = FetchType.EAGER)\nprivate List<Libro> libros;\n\nrepo.findAll();   // ni siquiera tocas getLibros()',
+      sql: 'select a1_0.id, a1_0.nombre from autor a1_0;                      -- 1\nselect l1_0.autor_id, ... from libro l1_0 where l1_0.autor_id=1;  -- +1\nselect l1_0.autor_id, ... from libro l1_0 where l1_0.autor_id=2;  -- +1\n-- ... 101 consultas, aunque nunca uses los libros',
+      say: 'EAGER carga la relación siempre y puede causar N+1 oculto; prefiero LAZY y traer lo necesario con JOIN FETCH o @EntityGraph.' },
+    { id: 'n1', short: 'N+1', title: 'El problema N+1',
+      p: 'Cargas 1 lista de entidades y Hibernate lanza 1 consulta extra por cada una para traer su relación. Con 100 autores son 101 consultas.',
+      li: ['Se detecta con spring.jpa.show-sql=true: la misma consulta repetida con otro id.', 'Soluciones: JOIN FETCH, @EntityGraph, @BatchSize o un DTO.', 'Con dos colecciones List a la vez, JOIN FETCH lanza MultipleBagFetchException.'],
+      code: '// Con LAZY: 1 + N\nList<Autor> autores = repo.findAll();\nfor (Autor a : autores) {\n    a.getLibros().size();   // 1 consulta POR autor\n}\n\n// Solución\n@Query("SELECT a FROM Autor a JOIN FETCH a.libros")\nList<Autor> findAllConLibros();',
+      sql: 'select a1_0.id, a1_0.nombre, l1_0.autor_id, l1_0.id, l1_0.titulo\nfrom autor a1_0\njoin libro l1_0 on a1_0.id=l1_0.autor_id;   -- 1 consulta',
+      say: 'N+1 ocurre al acceder a una relación LAZY por cada elemento de una lista. Lo resuelvo con JOIN FETCH o @EntityGraph y lo detecto en los logs de SQL.' },
+    { id: 'cache', short: 'Caché', title: 'Caché L1 y L2',
+      p: 'Hibernate evita ir a la base de datos si ya tiene el dato.',
+      li: ['L1: siempre activa, vive dentro de una sesión o transacción.', 'Si cada llamada abre su propia sesión, no se reutiliza nada.', 'L2: opcional, compartida entre sesiones (Ehcache, Infinispan). Se activa por entidad y puede devolver datos desactualizados.', 'Spring Data JDBC no tiene ninguna de las dos.'],
+      code: '@Transactional\nvoid ejemplo() {\n    Autor x = repo.findById(1L).get();   // SELECT\n    Autor y = repo.findById(1L).get();   // sin SQL, sale de L1\n    System.out.println(x == y);          // true: mismo objeto\n}',
+      sql: 'select a1_0.id, a1_0.nombre from autor a1_0 where a1_0.id=?\n-- el segundo findById no genera SQL',
+      say: 'La caché de primer nivel está siempre activa dentro de la sesión; la de segundo nivel es opcional y se configura por entidad.' }
+  ];
+  var cur = 'dirty';
+  var tabsEl = document.getElementById('tabs');
+  var cbox = document.getElementById('cbox');
+  tabsEl.innerHTML = CONC.map(function (c) { return '<button class="chip" data-c="' + c.id + '" aria-pressed="false">' + c.short + '</button>'; }).join('');
+  function renderConc() {
+    Array.prototype.forEach.call(tabsEl.children, function (c) { c.setAttribute('aria-pressed', String(c.dataset.c === cur)); });
+    var c = CONC.filter(function (x) { return x.id === cur; })[0];
+    cbox.innerHTML =
+      '<div><div class="kicker">Concepto</div><h3>' + c.title + '</h3><p>' + c.p + '</p><ul>' +
+      c.li.map(function (l) { return '<li>' + l + '</li>'; }).join('') + '</ul>' +
+      '<div class="say"><b>En una frase</b>' + c.say + '</div></div>' +
+      '<div><pre class="code">' + esc(c.code) + '</pre><pre class="code sql">' + esc(c.sql) + '</pre></div>';
+  }
+  tabsEl.addEventListener('click', function (e) {
+    var b = e.target.closest('.chip'); if (!b) return;
+    cur = b.dataset.c; renderConc();
+    try { history.replaceState(null, '', '#' + cur); } catch (err) {}
+  });
+  renderConc();
+
+  /* ---------- 4. Qué elegir ---------- */
+  var PICK = [
+    { w: 'API CRUD con entidades y relaciones', o: 'Spring Data JPA', t: 'Lo habitual y lo que más piden. Relaciones en LAZY y JOIN FETCH cuando haga falta.', top: true },
+    { w: 'Solo leer y devolver un DTO', o: 'Proyección a DTO en JPQL', t: 'No cargas entidades completas ni llenas el contexto de persistencia.' },
+    { w: 'Vas a modificar lo que traes', o: 'Entidades dentro de @Transactional', t: 'Necesitas entidades managed para que funcione el dirty checking. Si traes relaciones, añade JOIN FETCH.' },
+    { w: 'Una lista junto con sus relaciones', o: 'JOIN FETCH o @EntityGraph', t: 'Una sola consulta en lugar de 1 + N. Es la salida habitual del problema N+1.' },
+    { w: 'Reportes, agregaciones o SQL complejo', o: 'JdbcTemplate / JdbcClient', t: 'Control total del SQL. Se combina con JPA en el mismo proyecto.' },
+    { w: 'Evitar la "magia" de Hibernate', o: 'Spring Data JDBC', t: 'Sin sesión, sin LAZY, sin caché: más predecible, con menos funciones.' },
+    { w: 'WebFlux de punta a punta', o: 'Spring Data R2DBC', t: 'Solo compensa si todo el stack puede ser reactivo.' },
+    { w: 'Java 21 con hilos virtuales', o: 'Spring Data JPA, activándolos', t: 'Con spring.threads.virtual.enabled=true el código bloqueante escala mejor. El límite pasa a ser el pool de conexiones.' }
+  ];
+  document.getElementById('pick').innerHTML = PICK.map(function (p) {
+    return '<div class="card' + (p.top ? ' top' : '') + '"><div class="when">' + p.w + '</div><b>' + p.o + '</b><p>' + p.t + '</p></div>';
+  }).join('');
+  /* ---------- Enlaces directos: #n1, #lazy, #jpa, #tabla... ---------- */
+  function irAlHash() {
+    var h = ''; try { h = decodeURIComponent(location.hash.slice(1)); } catch (err) {}
+    if (!h) return;
+    var esConcepto = CONC.some(function (c) { return c.id === h; });
+    if (esConcepto) { cur = h; renderConc(); }
+    else if (PARTS[h]) { sel = h; renderBoard(); renderPanel(); }
+    var destino = esConcepto ? 'conceptos' : (PARTS[h] ? 'capas' : h);
+    var el = document.getElementById(destino);
+    if (el) el.scrollIntoView();
+  }
+  irAlHash();
+  window.addEventListener('hashchange', irAlHash);
+})();
+</script>
+</body>
+</html>
